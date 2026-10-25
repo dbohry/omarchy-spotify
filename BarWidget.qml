@@ -23,7 +23,7 @@ BarWidget {
   function close() { popupOpen = false }
 
   visible: true
-  implicitWidth: glyph.implicitWidth + Style.space(14)
+  implicitWidth: Math.max(glyph.implicitWidth + Style.space(14), Style.bar.iconSlot)
   implicitHeight: barSize
 
   Text {
@@ -33,7 +33,7 @@ BarWidget {
     text: "󰓇"
     color: root.activePlayer && root.activePlayer.isPlaying ? Commons.Color.accent : root.bar.barForeground
     font.family: root.bar.fontFamily
-    font.pixelSize: Style.font.body
+    font.pixelSize: Style.bar.iconCanvas
   }
 
   MouseArea {
