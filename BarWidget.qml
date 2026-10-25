@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Services.Mpris
 import qs.Ui
 import qs.Commons
 import qs.Commons as Commons
@@ -30,7 +31,7 @@ BarWidget {
     textFormat: Text.PlainText
     anchors.centerIn: parent
     text: "󰓇"
-    color: root.bar.barForeground
+    color: root.activePlayer && root.activePlayer.isPlaying ? Commons.Color.accent : root.bar.barForeground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.body
   }
@@ -39,6 +40,12 @@ BarWidget {
     anchors.fill: parent
     cursorShape: Qt.PointingHandCursor
     onClicked: root.popupOpen = !root.popupOpen
+  }
+
+  Shortcut {
+    sequence: "Escape"
+    enabled: root.popupOpen
+    onActivated: root.close()
   }
 
   PopupCard {
@@ -89,15 +96,38 @@ BarWidget {
           spacing: Style.space(4)
           width: parent.width - Style.space(74)
 
-          Text {
-            textFormat: Text.PlainText
-            text: root.title || "Nothing playing"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            elide: Text.ElideRight
+          Item {
+            id: titleClip
             width: parent.width
+            height: titleText.implicitHeight
+            clip: true
+
+            Text {
+              id: titleText
+              textFormat: Text.PlainText
+              text: root.title || "Nothing playing"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+              x: 0
+
+              property bool needsScroll: implicitWidth > titleClip.width
+              onTextChanged: x = 0
+
+              SequentialAnimation on x {
+                running: titleText.needsScroll && root.popupOpen
+                loops: Animation.Infinite
+                PauseAnimation { duration: 1500 }
+                NumberAnimation {
+                  to: titleClip.width - titleText.implicitWidth - Style.space(8)
+                  duration: Math.max(3000, (titleText.implicitWidth - titleClip.width) * 30)
+                  easing.type: Easing.Linear
+                }
+                PauseAnimation { duration: 1500 }
+                NumberAnimation { to: 0; duration: 400 }
+              }
+            }
           }
 
           Text {
@@ -172,6 +202,7 @@ BarWidget {
           anchors.right: track.right
           anchors.verticalCenter: parent.verticalCenter
           height: parent.height
+          hoverEnabled: true
           enabled: root.activePlayer && root.activePlayer.canSeek && root.activePlayer.positionSupported
           cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
@@ -183,12 +214,23 @@ BarWidget {
           onPositionChanged: function(mouse) { if (pressed) seekTo(mouse.x) }
         }
 
+        Rectangle {
+          id: seekHandle
+          visible: seekArea.enabled && (seekArea.containsMouse || seekArea.pressed)
+          width: Style.space(10)
+          height: width
+          radius: width / 2
+          color: Commons.Color.accent
+          x: track.x + track.width * progress.ratio - width / 2
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
         Text {
           id: timeText
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: progress.fmt(progress.pos) + "/" + progress.fmt(progress.len)
+          text: (seekArea.containsMouse && seekArea.enabled ? progress.fmt(seekArea.mouseX / seekArea.width * progress.len) : progress.fmt(progress.pos)) + "/" + progress.fmt(progress.len)
           color: Qt.darker(root.bar.foreground, 1.3)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.caption
@@ -198,6 +240,18 @@ BarWidget {
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: Style.space(6)
+        visible: root.activePlayer
+
+        Button {
+          iconText: "󰒟"
+          foreground: root.bar.foreground
+          horizontalPadding: Style.spacing.controlPaddingX
+          verticalPadding: Style.spacing.controlPaddingY
+          active: root.activePlayer && root.activePlayer.shuffle
+          enabled: root.activePlayer && root.activePlayer.shuffleSupported
+          opacity: enabled ? 1.0 : 0.4
+          onClicked: root.activePlayer.shuffle = !root.activePlayer.shuffle
+        }
 
         Button {
           iconText: "󰒮"
@@ -227,6 +281,33 @@ BarWidget {
           enabled: root.activePlayer && root.activePlayer.canGoNext
           opacity: enabled ? 1.0 : 0.4
           onClicked: if (root.mediaService) root.mediaService.runAction("next", false, root.mediaService.playerKey(root.activePlayer))
+        }
+
+        Button {
+          readonly property int loop: root.activePlayer ? root.activePlayer.loopState : MprisLoopState.None
+          iconText: loop === MprisLoopState.Track ? "󰑘" : (loop === MprisLoopState.Playlist ? "󰑖" : "󰑗")
+          foreground: root.bar.foreground
+          horizontalPadding: Style.spacing.controlPaddingX
+          verticalPadding: Style.spacing.controlPaddingY
+          active: loop !== MprisLoopState.None
+          enabled: root.activePlayer && root.activePlayer.loopSupported
+          opacity: enabled ? 1.0 : 0.4
+          onClicked: root.activePlayer.loopState = loop === MprisLoopState.None ? MprisLoopState.Playlist
+            : (loop === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None)
+        }
+      }
+
+      Button {
+        visible: !root.activePlayer
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: "Open Spotify"
+        iconText: "󰓇"
+        foreground: root.bar.foreground
+        horizontalPadding: Style.spacing.panelGap
+        verticalPadding: Style.spacing.controlPaddingY
+        onClicked: {
+          Quickshell.execDetached(["uwsm-app", "--", "spotify"])
+          root.popupOpen = false
         }
       }
 
