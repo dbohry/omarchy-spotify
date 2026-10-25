@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "spotify",
+  "name": "Spotify",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Spotify controls",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Spotify",
+    "description": "Spotify now-playing popup with playback controls",
+    "category": "Media",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.media"
+  }
+}
