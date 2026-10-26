@@ -9,9 +9,60 @@ BarWidget {
   id: root
   moduleName: "spotify"
 
-  readonly property var mediaService: bar?.shell?.firstPartyServiceFor("omarchy.media")
-  readonly property var activePlayer: mediaService ? mediaService.activePlayer : null
-  readonly property var sourcePlayers: mediaService ? mediaService.sourcePlayers : []
+  // Replacement bars (e.g. gta6-bar) hand widgets a service-less shell facade,
+  // so the plugin service may be unreachable. Fall back to reading Spotify's
+  // MPRIS players directly in that case.
+  readonly property var mediaService: bar?.shell?.serviceFor("spotify") ?? null
+  property string preferredPlayerKey: ""
+
+  readonly property var spotifyPlayers: {
+    var all = Mpris.players ? Mpris.players.values : []
+    var list = []
+    for (var i = 0; i < all.length; i++) {
+      var p = all[i]
+      if (!p) continue
+      var id = ((p.identity || "") + " " + (p.desktopEntry || "") + " " + (p.dbusName || "")).toLowerCase()
+      if (id.indexOf("spotify") >= 0) list.push(p)
+    }
+    return list
+  }
+  readonly property var directPlayer: {
+    var list = spotifyPlayers
+    for (var i = 0; i < list.length; i++)
+      if (preferredPlayerKey && playerKey(list[i]) === preferredPlayerKey) return list[i]
+    for (var j = 0; j < list.length; j++)
+      if (list[j].isPlaying) return list[j]
+    return list.length > 0 ? list[0] : null
+  }
+
+  readonly property var activePlayer: mediaService ? mediaService.activePlayer : directPlayer
+  readonly property var sourcePlayers: mediaService ? mediaService.sourcePlayers : spotifyPlayers
+
+  function playerKey(player) {
+    if (!player) return ""
+    return String(player.dbusName || player.desktopEntry || player.identity || "")
+  }
+
+  function runAction(action) {
+    if (mediaService) {
+      mediaService.runAction(action, false, mediaService.playerKey(activePlayer))
+      return
+    }
+    var p = activePlayer
+    if (!p) return
+    if (action === "previous" && p.canGoPrevious) p.previous()
+    else if (action === "next" && p.canGoNext) p.next()
+    else if (action === "playPause") {
+      if (p.isPlaying && p.canPause) p.pause()
+      else if (!p.isPlaying && p.canPlay) p.play()
+      else if (p.canTogglePlaying) p.togglePlaying()
+    }
+  }
+
+  function selectPlayer(player) {
+    if (mediaService) mediaService.selectPlayer(mediaService.playerKey(player))
+    else preferredPlayerKey = playerKey(player)
+  }
 
   readonly property bool hasMedia: activePlayer !== null && (activePlayer.trackTitle || activePlayer.trackArtist)
   readonly property string playIcon: activePlayer && activePlayer.isPlaying ? "󰏤" : "󰐊"
@@ -19,6 +70,7 @@ BarWidget {
   readonly property string artist: activePlayer ? (activePlayer.trackArtist || "") : ""
 
   property bool popupOpen: false
+
 
   function close() { popupOpen = false }
 
@@ -260,7 +312,7 @@ BarWidget {
           verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoPrevious
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.mediaService) root.mediaService.runAction("previous", false, root.mediaService.playerKey(root.activePlayer))
+          onClicked: root.runAction("previous")
         }
 
         Button {
@@ -270,7 +322,7 @@ BarWidget {
           verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && (root.activePlayer.canTogglePlaying || root.activePlayer.canPlay || root.activePlayer.canPause)
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.mediaService) root.mediaService.runAction("playPause", false, root.mediaService.playerKey(root.activePlayer))
+          onClicked: root.runAction("playPause")
         }
 
         Button {
@@ -280,7 +332,7 @@ BarWidget {
           verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoNext
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.mediaService) root.mediaService.runAction("next", false, root.mediaService.playerKey(root.activePlayer))
+          onClicked: root.runAction("next")
         }
 
         Button {
@@ -331,7 +383,7 @@ BarWidget {
 
             readonly property var player: modelData
             readonly property bool selected: root.activePlayer && player
-              && root.mediaService.playerKey(root.activePlayer) === root.mediaService.playerKey(player)
+              && root.playerKey(root.activePlayer) === root.playerKey(player)
             readonly property string sourceTitle: player ? (player.trackTitle || player.identity || player.desktopEntry || "Media source") : "Media source"
             readonly property string sourceDetail: player && player.trackArtist ? player.trackArtist : (player && player.identity ? player.identity : "")
 
@@ -394,7 +446,7 @@ BarWidget {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: if (root.mediaService) root.mediaService.selectPlayer(root.mediaService.playerKey(sourceRow.player))
+              onClicked: root.selectPlayer(sourceRow.player)
             }
           }
         }
